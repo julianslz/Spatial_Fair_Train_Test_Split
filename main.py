@@ -6,7 +6,7 @@ from geostatspy.geostats import kb2d
 import spatial_fair_split as sfs
 
 # %% Input the demonstrations
-demonstration = 2  # 1 or 2
+demonstration = 1  # 1 or 2
 n_realizations = 2  # number of training and test sets. Use one for your application
 xdir = 'X'  # the name of the column that contains the X direction
 ydir = 'Y'  # the name of the column that contains the Y direction

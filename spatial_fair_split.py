@@ -222,6 +222,10 @@ class SpatialFairSplit:
         kvariance_set = self._kvar_one_at_a_time(self.available_data)
         self.available_data = self.available_data.merge(kvariance_set, how="left", on="UWI")
 
+        # number of samples in training and test sets
+        self._test_samples = int(len(self.available_data) * test_size)
+        self._train_samples = len(self.available_data) - self._test_samples
+
     def dictionary_assigner(self, train_set, test_set):
         """
         It creates a complete dictionary required for kriging variance computation.
@@ -362,7 +366,7 @@ class SpatialFairSplit:
 
     def _get_n_random_splits(self, realizations):
         """
-        Definesn realizations different random train-test-split Results sets.
+        Definesn realizations different random tragitin-test-split Results sets.
         :param realizations: Integer. Number of splits to compute.
         :return: List. Two lists of train and test.
         """
@@ -825,13 +829,13 @@ class PublicationImages:
                         color=(.388, .431, .392, 0.1)
                     )
 
-            else:
-                sns.kdeplot(
-                    x=self.test_kvar_fair[column][:, j],
-                    ax=axs[column],
-                    label="Test realizations",
-                    color=(.388, .431, .392, 0.1)
-                )
+                else:
+                    sns.kdeplot(
+                        x=self.test_kvar_fair[column][:, j],
+                        ax=axs[column],
+                        label="Test realizations",
+                        color=(.388, .431, .392, 0.1)
+                    )
 
             axs[column].set_title("Demonstration " + str(column + 1))
             axs[column].set_xlim([0, 1])
