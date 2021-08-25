@@ -279,6 +279,7 @@ class SpatialFairSplit:
         counter = 0
         fair_test_samples = []
         test_samples = int(len(dataset) * self.test_size)
+        np.random.seed(11150)
         while counter < test_samples or trials > (test_samples * 4):
             random_bin_index = np.random.randint(0, len(self.probability))
             # the minimum value of kriging variance of the bin
@@ -725,9 +726,9 @@ class PublicationImages:
         colores = (.388, .431, .392, 0.15)  # the last digit is the opacity
 
         # TODO AttributeError: 'list' object has no attribute 'shape' LINE 730
-        for i in range(len(self.test_kvar_fair)):
+        for i in range(self.test_kvar_fair.shape[1]):
             sns.kdeplot(
-                x=self.test_kvar_fair[i].iloc[:, -1],
+                x=self.test_kvar_fair[:, i],
                 ax=axs[0],
                 color=colores
             )
@@ -744,7 +745,7 @@ class PublicationImages:
                 color=colores,
             )
 
-            if i == 99:
+            if i == self.test_kvar_spatial.shape[1] - 1:
                 sns.kdeplot(
                     x=self.test_kvar_spatial[:, i],
                     ax=axs[2],
@@ -754,7 +755,7 @@ class PublicationImages:
 
         for row in range(3):
             sns.kdeplot(
-                x=self.rw_kvar[:, 0],
+                x=self.rw_kvar,
                 ax=axs[row],
                 linewidth=3,
                 label='Planned real-world use of the model distribution',

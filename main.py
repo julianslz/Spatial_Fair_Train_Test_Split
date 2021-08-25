@@ -6,7 +6,10 @@ from geostatspy.geostats import kb2d
 import spatial_fair_split as sfs
 
 # %% Input the demonstrations
-demonstration = 1  # 1 or 2
+demonstration = 2  # 1 or 2
+n_realizations = 2  # number of training and test sets. Use one for your application
+xdir = 'X'  # the name of the column that contains the X direction
+ydir = 'Y'  # the name of the column that contains the Y direction
 
 # %% read the data
 training = pd.read_csv("demo" + str(demonstration) + "_train.csv", dtype={'X': float, 'Y': float})
@@ -17,11 +20,7 @@ real_world = pd.read_csv("demo" + str(demonstration) + "_rw.csv", dtype={'X': fl
 real_world.reset_index(inplace=True)  # use the well index as uwi
 real_world = real_world.rename(columns={'index': 'UWI'})
 
-# %% Geostatistical setup and definitions
-xdir = 'X'
-ydir = 'Y'
-
-# Variogram model using GSLIB convention
+# %% Geostatistical setup and definitions. Variogram model using GSLIB convention
 vario = make_variogram(
     nug=0.0, nst=1,
     it1=1, cc1=1.0, azi1=0, hmaj1=250, hmin1=157,
@@ -45,12 +44,16 @@ dictionary_model = {
 }
 
 # %%
-n_realizations = 2
 # instantiate the object
-fair_cv = sfs.SpatialFairSplit(training, real_world, dictionary_model)
-# obtain the realizations of training and test sets from spatial fair split (sfs). Get the kriging variance distribution
-# too
-sfs_train, sfs_test, rw_kvar = fair_cv.fair_sets_realizations(n_realizations)
+fair_cv = sfs.SpatialFairSplit(training, real_world, dictionary_model, xdir=xdir, ydir=ydir)
+
+# obtain the realizations of training and test sets from spatial fair split (sfs). Get the kriging variance
+# distribution too
+sfs_train, sfs_test, sfs_kvar = fair_cv.fair_sets_realizations(n_realizations)
+
+# sfs_train are the training sets
+# sfs_test are the test sets
+# sfs_vkar is the kriging variance of sfs_test using sfs_train
 
 # %%
 # For comparison purposes, compute other sets with different cross-validation methods: the validation set approach (vsa)
@@ -96,20 +99,20 @@ sfs.plot_3_realizations(
     rand_test=vsa_test,
     spatial_cv=spatial_cv,
     real_world_set=real_world,
-    realiz=1
+    realiz=0
 )
 
 # %%
 # Instantiate the object to obtain the KDE and violin plots
 images = sfs.PublicationImages(
     test_kvar_random=vsa_kvar,
-    test_kvar_fair=sfs_test,
+    test_kvar_fair=sfs_kvar,
     test_kvar_spatial=spatial_cv_kvar,
-    rw_kvar=rw_kvar
+    rw_kvar=fair_cv.rw_krig_var
 )
 
 # Plot the kernel density estimates of the three cross-validations methods: Figures 4 and 8
-plot = images.kde_plots(5)
+plot = images.kde_plots(5.0)
 
 # Plot the violin plots of the divergence metrics: Figures 5 and 9
-plot = images.divergence_violins()
+plot2 = images.divergence_violins()
