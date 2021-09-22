@@ -1,0 +1,19 @@
+              Parameters for KB2D                                          
+              ********************                                         
+                                                                           
+START OF PARAMETER:                                                        
+data_temp.dat                         -file with data                      
+1  2  3                               -  columns for X,Y,vr                
+-1.0e21   1.0e21                      -   trimming limits                  
+0                                     -debugging level: 0,1,2,3            
+none.dbg                              -file for debugging output           
+D:\PyCharm projects\FairTrainTest/kbd2dexe                   -file for kriged output              
+380 2403607.0 500                              
+380 5692024.0 500                              
+1    1                                -x and y block discretization        
+1    30                               -min and max data for kriging        
+74871.58932238017                     -maximum search radius               
+0    4.987999999999999              -0=SK, 1=OK,  (mean if SK)           
+2 0.0019066257660920183          -nst, nugget effect                  
+1 0.6324522412942912 76.80758405823096 3020.6789239768227 11232.347296625365 -it, c ,azm ,a_max ,a_min 
+2 0.36564113293961675 76.80758405823096 74871.58932238017 33581.04567526035 -it, c ,azm ,a_max ,a_min 
