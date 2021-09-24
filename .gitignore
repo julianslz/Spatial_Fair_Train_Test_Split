@@ -1,0 +1,9 @@
+
+Files/Datasets/Ignore/vsa_train.txt
+Files/Datasets/Ignore/vsa_test.txt
+Files/Datasets/Ignore/training_VM.csv
+Files/Datasets/Ignore/spatial_cv.txt
+Files/Datasets/Ignore/real_world_VM.csv
+Files/Datasets/Ignore/fair_test.txt
+Files/Datasets/Ignore/fair_train.txt
+Files/Datasets/Ignore/fair_kvar.npy
