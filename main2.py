@@ -6,7 +6,7 @@ from spatial_fair_split2 import SpatialFairSplit, plot_3_realizations, Publicati
 # %% Input the demonstrations
 xdir = 'X_Coord_SMDA'  # the name of the column that contains the X direction
 ydir = 'Y_Coord_SMDA'  # the name of the column that contains the Y direction
-feature = 'TOC_weight_pct'
+feature = 'TOC_weight_pct' 
 
 vario_model = {
     'nug': 0.0019066257660920183,

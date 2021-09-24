@@ -11,6 +11,9 @@ with open("fair_train.txt", "rb") as fp:  # Unpickling
 with open("fair_test.txt", "rb") as fp:  # Unpickling
     fair_test = pickle.load(fp)
 
+with open("fair_test.txt", "rb") as fp:  # Unpickling
+    fair_test = pickle.load(fp)
+
 
 # %% Machine learning
 
