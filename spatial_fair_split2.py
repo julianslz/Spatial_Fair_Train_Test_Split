@@ -749,7 +749,7 @@ class PublicationImages:
 
         plt.show()
 
-        return plt
+        return fig
 
     def kde_plots(self, max_y):
         """
@@ -760,25 +760,31 @@ class PublicationImages:
         """
 
         fig, axs = plt.subplots(1, 3, figsize=(12, 7), sharey=True)
-        colores = (.388, .431, .392, 0.15)  # the last digit is the opacity
+        colores = (.388, .431, .392, 0.05)  # the last digit is the opacity
 
         # TODO AttributeError: 'list' object has no attribute 'shape' LINE 730
         for i in range(self.test_kvar_fair.shape[1]):
             sns.kdeplot(
                 x=self.test_kvar_fair[:, i],
                 ax=axs[0],
+                clip=[0, 1],
+                linewidth=0.2,
                 color=colores
             )
 
             sns.kdeplot(
                 x=self.test_kvar_random[:, i],
                 ax=axs[1],
+                clip=[0, 1],
+                linewidth=0.2,
                 color=colores
             )
 
             sns.kdeplot(
                 x=self.test_kvar_spatial[:, i],
                 ax=axs[2],
+                clip=[0, 1],
+                linewidth=0.2,
                 color=colores,
             )
 
@@ -786,6 +792,8 @@ class PublicationImages:
                 sns.kdeplot(
                     x=self.test_kvar_spatial[:, i],
                     ax=axs[2],
+                    clip=[0, 1],
+                    linewidth=0.2,
                     label="Test distribution realizations",
                     color=colores
                 )
@@ -795,6 +803,7 @@ class PublicationImages:
                 x=self.rw_kvar,
                 ax=axs[row],
                 linewidth=3,
+                clip=[0, 1],
                 label='Planned real-world use of the model distribution',
                 color=(.784, .054, 0.172, 1))
             axs[row].set_xlabel('Kriging variance', fontsize=14)
@@ -825,7 +834,7 @@ class PublicationImages:
         plt.subplots_adjust(bottom=0.15)
         plt.show()
 
-        return plt
+        return fig
 
     def updated_rw_kvar(self, training, real_world, dictionary_model, training_sets, max_y=3.5):
 

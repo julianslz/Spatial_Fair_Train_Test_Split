@@ -8,3 +8,14 @@ Files/Datasets/Ignore/fair_test.txt
 Files/Datasets/Ignore/fair_train.txt
 Files/Datasets/Ignore/fair_kvar.npy
 main2.py
+Files/Datasets/Ignore/real_world.csv
+Files/Datasets/Ignore/available_data.csv
+Files/Datasets/Ignore/vsa_kvar.npy
+Files/Datasets/Ignore/spatial_cv_kvar.npy
+Files/Datasets/Ignore/real_world.csv
+Files/Figures/Real_data_kde.png
+Files/Figures/real_violin.png
+Files/Figures/configur.png
+*.png
+Files/Datasets/Ignore/real_world.csv
+Files/Datasets/Ignore/available_data.csv
