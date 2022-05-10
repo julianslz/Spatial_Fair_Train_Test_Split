@@ -14,13 +14,11 @@ YDIR = 'Y'  # the name of the column that contains the Y direction
 
 # %% read the data
 path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_train.csv")
-# path = "D:\\PyCharm projects\\FairTrainTest\\Files\\Datasets/demo" + str(SET) + "_train.csv"
 training = pd.read_csv(path, dtype={'X': float, 'Y': float})
 training.reset_index(inplace=True)  # use the well index as uwi
 training = training.rename(columns={'index': 'UWI'})
 
 path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_rw.csv")
-# path = "D:\\PyCharm projects\\FairTrainTest\\Files\\Datasets/demo" + str(SET) + "_rw.csv"
 real_world = pd.read_csv(path, dtype={'X': float, 'Y': float})
 real_world.reset_index(inplace=True)  # use the well index as uwi
 real_world = real_world.rename(columns={'index': 'UWI'})

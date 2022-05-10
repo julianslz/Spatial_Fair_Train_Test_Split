@@ -6,7 +6,7 @@
 
 This repository contains the synthetic dataset and the Python and Cython codes to reproduce the results from the scientific publication **"Fair Train-Test Split in Machine Learning: Mitigating Spatial Autocorrelation and Ensuring Prediction Fairness."**
 
-**Table of Contents**
+**Note** The demo is compatible for semivariogram models with one structure only (e.g., Gaussian, spherical, or exponential). I will upload the version for two structures in the future.
 
 # Executive summary
 Neglecting the spatial correlation for subsurface applications in machine learning models could yield over-optimistic and unrealistic results. Furthermore, although some techniques have been suggested, the training from those techniques fails to replicate the difficulty of the final use of the model (the training may be excessively complicated or too easy).
@@ -39,6 +39,10 @@ Feel free to clone this repository in your local machine under the [MIT license]
 For a better experience, create a new environment using the requirements.txt file.
 
 Make sure you include the Code and Datasets folders as sources root.
+
+## Running the script
+The main script is *main_demo.py* and it contains the instructions to run it for your dataset. You will only need a semivariogram model for your data using
+GSLIB convention. [Here](https://github.com/GeostatsGuy/PythonNumericalDemos/blob/master/GeostatsPy_variogram_modeling.ipynb) you can find more information and a demo.
 
 ## Cython compilation
 After installing the [Cython](https://cython.org/) package, the code should run without problem because I have compiled the code for you. Otherwise, try to compile the cython_kriging_c.pyx file as:
