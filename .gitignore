@@ -23,4 +23,3 @@ Files/Datasets/Ignore/available_data.csv
 .idea/FairTrainTest.iml
 Real dataset
 Real dataset/cython_kriging2.c
-cython_kriging.cp38-win_amd64.pyd
