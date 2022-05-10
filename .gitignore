@@ -7,7 +7,7 @@ Files/Datasets/Ignore/real_world_VM.csv
 Files/Datasets/Ignore/fair_test.txt
 Files/Datasets/Ignore/fair_train.txt
 Files/Datasets/Ignore/fair_kvar.npy
-main2.py
+main_real_set.py
 Files/Datasets/Ignore/real_world.csv
 Files/Datasets/Ignore/available_data.csv
 Files/Datasets/Ignore/vsa_kvar.npy
@@ -19,3 +19,6 @@ Files/Figures/configur.png
 *.png
 Files/Datasets/Ignore/real_world.csv
 Files/Datasets/Ignore/available_data.csv
+.idea/FairTrainTest.iml
+.idea/FairTrainTest.iml
+Real dataset
