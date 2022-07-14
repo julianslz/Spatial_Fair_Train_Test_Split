@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from numba import jit
+import time
 
 from scipy.special import kl_div
 from scipy.spatial.distance import jensenshannon
@@ -9,7 +10,18 @@ from scipy.stats import wasserstein_distance
 
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from cython_kriging import simple_krig_var
+from cython_kriging import simple_krig_var as simple_krig_var_cython
+
+
+def simple_krig_var(*args, **kwargs):
+    start_time = time.perf_counter()
+    ans = simple_krig_var_cython(*args, **kwargs)
+    
+    #print(f"Ran kriging in time: {time.perf_counter() - start_time}")
+    
+    #print(args, kwargs)
+    return ans
+    
 
 # machine learning
 from sklearn.model_selection import train_test_split
@@ -28,7 +40,7 @@ pio.templates.default = "plotly_white"
 
 #######################################
 # Functions
-#######################################
+# ######################################
 @jit(nopython=True)
 def setup_rotmat(c0, cc, ang):
     PI = 3.141_592_65
@@ -214,9 +226,19 @@ class SpatialFairSplit:
         self._ydir = ydir
 
         rw_dict_model = self.dictionary_assigner(self.available_data, self.rw_set)
+        
+        # Kriging variance of real world data
+        print("Kriging variance of real world data")
+        print(rw_dict_model)
         self.rw_krig_var = kriging_variance_rw(rw_dict_model)
+        print("END Kriging variance of real world data")
+        print("results", self.rw_krig_var)
 
         self._weights = np.ones_like(self.rw_krig_var) / len(self.rw_krig_var)
+        plt.title("Distribution of rw_krig_var")
+        
+        # Better to use something like this instead of 15 bins?
+        # https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
         self.probability, self.bins, _ = plt.hist(self.rw_krig_var, bins=15, density=False, weights=self._weights)
 
         kvariance_set = self._kvar_one_at_a_time(self.available_data)
@@ -253,6 +275,15 @@ class SpatialFairSplit:
         :param dataset:
         :return:
         """
+        print("_kvar_one_at_a_time")
+        
+        # TODO: Speed up this computation
+        # https://link.springer.com/content/pdf/10.1007/BF01033232.pdf
+        # https://stats.stackexchange.com/questions/156161/gaussian-process-regression-leave-one-out-prediction
+        # https://stats.stackexchange.com/questions/538452/analytical-leave-one-out-prediction-variance-for-kriging
+        # https://jmlr.org/papers/volume17/14-540/14-540.pdf
+        
+        
         kvariance_set = np.zeros((len(dataset), 2))
         for i, uwi in enumerate(dataset['UWI']):
             test_well = dataset.query("UWI == @uwi")
@@ -278,20 +309,32 @@ class SpatialFairSplit:
         :return:
 
         """
+        print(f"INSIDE FUNCTION: _get_fair_test_samples")
         dataset2 = dataset.copy()
         trials = 0
         counter = 0
         fair_test_samples = []
         test_samples = int(len(dataset) * self.test_size)
+        print(f"Drawing {test_samples} test samples")
         np.random.seed(11150)
+        
         while counter < test_samples or trials > (test_samples * 4):
+            
+            
             random_bin_index = np.random.randint(0, len(self.probability))
             # the minimum value of kriging variance of the bin
             left_kvar = self.bins[random_bin_index]
             # the maximum value of kriging variance of the bin
             right_kvar = self.bins[random_bin_index + 1]
+            print(f"Looking for points with variance in range: [{left_kvar}, {right_kvar}]")
+            
             # the wells that are inside the kriging variance
             subset_wells_bin = dataset2.query("kvar >= @left_kvar & kvar < @right_kvar")
+            
+            
+            print(f"Points found: {len(subset_wells_bin)}")
+            
+            
             # if there are no subsets that fill the condition (e.g., extreme kvar), pass.
             if len(subset_wells_bin) == 0:
                 pass
@@ -301,6 +344,7 @@ class SpatialFairSplit:
                 # the probability of ocurrence of the chosen bin
                 prob_at_bin = self.probability[random_bin_index]
                 # draw a random number U~(0, max probability)
+                print("Setting seed", seed , trials)
                 np.random.seed(seed + trials)
                 z = np.random.uniform(0, np.max(self.probability))
 
@@ -855,3 +899,9 @@ class PublicationImages:
         axs[0].legend(loc='upper center', bbox_to_anchor=(1, -0.05),
                       fancybox=True, shadow=True, ncol=4)
         plt.show()
+
+""
+
+
+""
+

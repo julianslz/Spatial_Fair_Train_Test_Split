@@ -1,27 +1,11 @@
 cimport numpy
 import numpy
+
+
+import scipy
+
 cimport cython
 from libc.math cimport sqrt, fmax  # exp
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-
-cdef inline numpy.ndarray[numpy.float64_t, ndim=1] ksol_numpy(
-        int neq,
-        numpy.ndarray[numpy.float64_t, ndim=2] a,
-        numpy.ndarray[numpy.float64_t, ndim=1] r
-        ):
-    """
-    Find solution of a system of linear equations.
-    :param neq: 
-    :param a: 
-    :param r: 
-    :return: 
-    """
-    a = a[0: neq * neq]  # trim the array
-    a = numpy.reshape(a, (neq, neq))  # reshape to 2D
-    s = numpy.linalg.solve(a, r)  # solve the system of equations
-    return s
 
 cdef inline double cova2(
         double x1,
@@ -79,11 +63,14 @@ cdef inline double cova2(
     # compare if you are in the same location
     if comparer < epsilon:
         cova2_ = maxcov
-    else:
-        pass
 
     return cova2_
 
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
 def simple_krig_var(
         int ndata,
         int nest,
@@ -129,11 +116,11 @@ def simple_krig_var(
     cdef numpy.ndarray[numpy.float64_t, ndim=1] rr = numpy.zeros(ndata)
     cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.full(nest, sill)
 
-    # Make and solve the kriging matrix, calculate the kriging estimate and variance
-    for iest in range(nest):
-        for idata in range(ndata):
-            for jdata in range(ndata):
-                a[idata, jdata] = cova2(
+
+    # Create the matrix a 
+    for idata in range(ndata):
+        for jdata in range(ndata):
+            a[idata, jdata] = cova2(
                     x_train[idata],
                     y_train[idata],
                     x_train[jdata],
@@ -147,6 +134,12 @@ def simple_krig_var(
                     rotmat4,
                     maxcov
                 )
+
+    cholesky_factor, low = scipy.linalg.cho_factor(a)
+
+    # Make and solve the kriging matrix, calculate the kriging estimate and variance
+    for iest in range(nest):
+        for idata in range(ndata):
 
             r[idata] = cova2(
                 x_train[idata],
@@ -164,7 +157,11 @@ def simple_krig_var(
             )
             rr[idata] = r[idata]
 
-        s = ksol_numpy(ndata, a, r)
+
+        # from scipy.linalg import cho_factor, cho_solve
+        s = scipy.linalg.cho_solve((cholesky_factor, low), r)
+
+        # s = ksol_numpy(ndata, a, r)
         for idata in range(0, ndata):
             kriging_variance[iest] = kriging_variance[iest] - s[idata] * rr[idata]
     return kriging_variance
