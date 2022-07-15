@@ -1,11 +1,137 @@
 cimport numpy
-import numpy
-
-
-import scipy
-
 cimport cython
-from libc.math cimport sqrt, fmax  # exp
+import numpy
+import scipy
+from libc.math cimport sqrt, fmax, exp
+
+
+cdef inline double covariance(
+        double x1,
+        double y1,
+        double x2,
+        double y2,
+        double decay
+        ):
+    cdef double dx = x2 - x1
+    cdef double dy = y2 - y1
+    cdef double distance = sqrt(dx * dx + dy * dy)
+
+    return exp(-distance / decay)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def get_test_set_variances(
+        numpy.ndarray[numpy.float64_t, ndim=1] x_train,
+        numpy.ndarray[numpy.float64_t, ndim=1] y_train,
+        numpy.ndarray[numpy.float64_t, ndim=1] x_test,
+        numpy.ndarray[numpy.float64_t, ndim=1] y_test,
+        ):
+
+    cdef int n_train = len(x_train)
+    cdef int n_test = len(x_test)
+
+    cdef double decay = 500
+
+    cdef int k, i, j
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] covariance_matrix = numpy.empty([n_train, n_train])
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] right_hand_side = numpy.empty(n_train)
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] weights = numpy.empty(n_train)
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.empty(n_test)
+    
+    # Create matrix of covariances
+    for i in range(n_train):
+        for j in range(i + 1):
+            
+            # Fill the lower diagonal entries
+            covariance_matrix[i, j] = covariance(
+                    x_train[i],
+                    y_train[i],
+                    x_train[j],
+                    y_train[j],
+                    decay,
+                )
+            
+            # Fill the upper diagonal too
+            if j < i:
+                covariance_matrix[j, i] = covariance_matrix[i, j]
+                
+
+    # Factor the matrix
+    cholesky_factor, low = scipy.linalg.cho_factor(covariance_matrix)
+
+    # Make and solve the kriging matrix, calculate the kriging estimate and variance
+    for k in range(n_test):
+
+        # Build the right hand side
+        for i in range(n_train):
+            right_hand_side[i] = covariance(
+                x_train[i],
+                y_train[i],
+                x_test[k],
+                y_test[k],
+                decay,
+            )
+
+        weights = scipy.linalg.cho_solve((cholesky_factor, low), right_hand_side)
+        kriging_variance[k] = covariance_matrix[0, 0] - (weights * right_hand_side).sum()
+        
+    return kriging_variance
+
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def get_variances_loo(numpy.ndarray[numpy.float64_t, ndim=1] x_train,
+                      numpy.ndarray[numpy.float64_t, ndim=1] y_train):
+    """
+    Leave one out simple kriging variances.
+    """
+
+    cdef double decay = 500
+    cdef int i, j
+    cdef int ndata = len(x_train)
+    
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] C = numpy.empty([ndata, ndata])
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] C_inv
+    cdef numpy.ndarray[numpy.uint8_t, ndim=1, cast=True] e;
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.empty(ndata)
+    
+    # Create matrix of covariances
+    for i in range(ndata):
+        for j in range(i + 1):
+            
+            # Fill the lower diagonal entries
+            C[i, j] = covariance(
+                    x_train[i],
+                    y_train[i],
+                    x_train[j],
+                    y_train[j],
+                decay,
+            )
+            
+            # Fill the upper diagonal too
+            if j < i:
+                C[j, i] = C[i, j]
+                
+    # Invert the matrix
+    C_inv = numpy.linalg.inv(C)
+    
+    for i in range(ndata):
+        
+        e = numpy.ones(ndata, dtype=bool)
+        e[i] = 0
+        
+        kriging_variance[i] = C[i, i] + ((C_inv[i, e]/ C_inv[i, i]) * C[i, e]).sum()
+        
+    return kriging_variance
+
+
+
+# =============================================================================
+# =============================================================================
 
 cdef inline double cova2(
         double x1,

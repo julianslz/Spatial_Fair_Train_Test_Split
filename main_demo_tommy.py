@@ -1,11 +1,99 @@
 # %%
+# %load_ext autoreload
+
+# %%
+# %autoreload 2
+
+# %%
 import os
 import numpy as np
 import pandas as pd
 from geostatspy.GSLIB import make_variogram
 from geostatspy.geostats import kb2d
+import matplotlib.pyplot as plt
 
 import utils_demo as sfs
+
+# %%
+SET = 1  # 1 or 2
+N_REALIZATIONS = 100  # number of training and test sets.
+XDIR = 'X'  # the name of the column that contains the X direction
+YDIR = 'Y'  # the name of the column that contains the Y direction
+
+# %%
+path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_train.csv")
+training = pd.read_csv(path, dtype={'X': float, 'Y': float})
+training.reset_index(inplace=True)  # use the well index as uwi
+training = training.rename(columns={'index': 'UWI'})
+
+path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_rw.csv")
+real_world = pd.read_csv(path, dtype={'X': float, 'Y': float})
+real_world.reset_index(inplace=True)  # use the well index as uwi
+real_world = real_world.rename(columns={'index': 'UWI'})
+
+# %%
+from spatial_split import sample_to_match
+
+target_data = (np.random.beta(3, 2, 10000)).tolist()
+samples_data = (np.random.beta(1.2, 1.3, 10000))
+
+
+indices = np.arange(len(samples_data))
+def function(indices):
+    return samples_data[indices]
+
+num_samples = 1000
+
+chosen_indices = list(sample_to_match(indices, function, target_data, num_samples))
+
+chosen_data = [samples_data[i] for i in chosen_indices]
+
+
+plt.hist(target_data, bins="fd", label="Target", alpha=0.33, density=True)
+plt.hist(samples_data, bins="fd", label="Samples", alpha=0.33, density=True)
+plt.hist(chosen_data, bins="fd", label="Chosen", alpha=0.33, density=True)
+
+plt.legend()
+plt.show()
+
+
+
+
+print(np.mean(target_data), np.mean(chosen_data))
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+from spatial_split import SpatialSplit
+
+# %%
+# %%time
+
+splitter = SpatialSplit(
+    x_dataset=training["X"].to_numpy(),
+    y_dataset=training["Y"].to_numpy(),
+    x_realworld=training["X"].to_numpy(),
+    y_realworld=training["X"].to_numpy(),
+
+)
+
+
+inds, loo = splitter.draw_test_train_split(train_size=0.25)
+loo_chosen = [loo[i] for i in inds]
+
+plt.hist(loo, alpha=0.5, density=True, label="Dataset");
+plt.hist(loo_chosen, alpha=0.5, density=True, label="Test set");
+plt.hist(splitter.rw_variances, alpha=0.5, density=True, label="Real world set");
+
+plt.legend()
+
+# %%
+
+# %%
 
 # %% Input the data
 SET = 1  # 1 or 2
@@ -23,10 +111,6 @@ path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_rw.c
 real_world = pd.read_csv(path, dtype={'X': float, 'Y': float})
 real_world.reset_index(inplace=True)  # use the well index as uwi
 real_world = real_world.rename(columns={'index': 'UWI'})
-
-training = training.iloc[:, :3]
-
-training
 
 # %%
 #training = training.sample(100, random_state=42)

@@ -235,13 +235,14 @@ class SpatialFairSplit:
         # print("END Kriging variance of real world data")
         # print("results", self.rw_krig_var)
 
-        self._weights = np.ones_like(self.rw_krig_var) / len(self.rw_krig_var)
+        #self._weights = np.ones_like(self.rw_krig_var) / len(self.rw_krig_var)
         plt.title("Distribution of rw_krig_var")
         
         # Better to use something like this instead of 15 bins?
         # https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
-        self.probability, self.bins, _ = plt.hist(self.rw_krig_var, bins=15, density=False, weights=self._weights)
-
+        self.probability, self.bins, _ = plt.hist(self.rw_krig_var, bins=15, density=False)
+        print("FD bins", len(self.probability))
+        
         kvariance_set = self._kvar_one_at_a_time(self.available_data)
         self.available_data = self.available_data.merge(kvariance_set, how="left", on="UWI")
 
@@ -320,6 +321,11 @@ class SpatialFairSplit:
         # print(f"Drawing {test_samples} test samples")
         np.random.seed(11150)
         
+        #plt.hist(dataset2.kvar.values, bins=15)
+        #plt.show()
+        
+        accepted, rejected = 0, 0
+        
         while counter < test_samples or trials > (test_samples * 4):
             
             
@@ -328,13 +334,13 @@ class SpatialFairSplit:
             left_kvar = self.bins[random_bin_index]
             # the maximum value of kriging variance of the bin
             right_kvar = self.bins[random_bin_index + 1]
-            # print(f"Looking for points with variance in range: [{left_kvar}, {right_kvar}]")
+            #print(f"Looking for points with variance in range: [{left_kvar}, {right_kvar}]")
             
             # the wells that are inside the kriging variance
             subset_wells_bin = dataset2.query("kvar >= @left_kvar & kvar < @right_kvar")
             
             
-            # print(f"Points found: {len(subset_wells_bin)}")
+            #print(f"Points found: {len(subset_wells_bin)}")
             
             
             # if there are no subsets that fill the condition (e.g., extreme kvar), pass.
@@ -344,13 +350,19 @@ class SpatialFairSplit:
                 # randomly choose a well within that subset
                 one_well = subset_wells_bin.sample(n=1)
                 # the probability of ocurrence of the chosen bin
+                
+                # TODO: if prob_at_bin = 0, which is possible if there are many bins
+                # the algorithm takes a long time. Should remove all these from sampling
+                
                 prob_at_bin = self.probability[random_bin_index]
                 # draw a random number U~(0, max probability)
                 # print("Setting seed", seed , trials)
                 np.random.seed(seed + trials)
                 z = np.random.uniform(0, np.max(self.probability))
 
+                #print(f"Compring z <= prob_at_bin    = >   {z} <= {prob_at_bin}")
                 if z <= prob_at_bin:
+                    #print("Accepted sample.")
                     one_well_index = one_well.index
                     dataset2.drop(index=one_well_index, inplace=True)
                     dataset2.drop(columns=["kvar"], inplace=True)
@@ -363,10 +375,18 @@ class SpatialFairSplit:
                     dataset2 = dataset2.merge(train_kvariance, how="left", on="UWI")
                     # update counter
                     counter += 1
+                    
+                    
+                    accepted += 1
+                    
+                else:
+                    rejected += 1
+                    #print("Rejected sample.")
 
             trials += 1
             # pbar.update(1)
 
+        print(f"Rejection ratio: {rejected / (accepted + rejected)}")
         return fair_test_samples
 
     def _get_multiple_kriging_var(self, sub_train, sub_test):
