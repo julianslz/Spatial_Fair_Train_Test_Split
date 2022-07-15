@@ -1,26 +1,4 @@
 # %%
-from numpy.linalg import cholesky
-import numpy as np
-
-F = np.arange(9).reshape(3, 3)
-A = F.T @ F
-
-A, cholesky(A)
-
-# %%
-A2 = np.eye(4)
-A2[:3, :3] = A
-
-A2, cholesky(A2)
-
-# %%
-np.arange(9).reshape(3, 3)
-
-# %%
-
-# %%
-
-# %%
 import os
 import numpy as np
 import pandas as pd
@@ -45,6 +23,10 @@ path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_rw.c
 real_world = pd.read_csv(path, dtype={'X': float, 'Y': float})
 real_world.reset_index(inplace=True)  # use the well index as uwi
 real_world = real_world.rename(columns={'index': 'UWI'})
+
+# %%
+#training = training.sample(100, random_state=42)
+#real_world = real_world.sample(20, random_state=42)
 
 # %%
 training.head(5)
@@ -100,6 +82,42 @@ sfs_train, sfs_test, sfs_kvar = fair_cv.fair_sets_realizations(N_REALIZATIONS)
 # sfs_train are the training sets
 # sfs_test are the test sets
 # sfs_vkar is the kriging variance of sfs_test using sfs_train
+
+
+assert np.allclose(sfs_kvar[0, :], np.array([0.73192879, 0.41451907, 0.41451907, 0.41451907, 0.41451907]))
+
+# %%
+1/0
+
+# %%
+"""
+Ran kriging in time: 0.0021694999999999354
+Ran kriging in time: 0.0015618999999995609
+Ran kriging in time: 0.0011099999999997223
+Ran kriging in time: 0.001345600000000502
+Ran kriging in time: 0.0013944999999999652
+Ran kriging in time: 0.0017830999999999264
+Ran kriging in time: 0.0016769999999999285
+Ran kriging in time: 0.0013462999999998004
+Ran kriging in time: 0.0021250000000003766
+Ran kriging in time: 0.0015865999999995495
+Ran kriging in time: 0.0010921000000001513
+Ran kriging in time: 0.001582199999999645
+"""
+
+# %%
+"""
+Ran kriging in time: 0.0011087999999999099
+Ran kriging in time: 0.0008495000000001696
+Ran kriging in time: 0.000705300000000797
+Ran kriging in time: 0.0011446999999993324
+Ran kriging in time: 0.0013978000000003377
+Ran kriging in time: 0.0012641000000002123
+Ran kriging in time: 0.0013940000000003394
+Ran kriging in time: 0.0016142000000005652
+Ran kriging in time: 0.0012726000000000681
+Ran kriging in time: 0.0011061000000003318
+"""
 
 # %%
 

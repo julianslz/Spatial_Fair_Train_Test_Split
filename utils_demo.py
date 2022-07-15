@@ -11,13 +11,14 @@ from scipy.stats import wasserstein_distance
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from cython_kriging import simple_krig_var as simple_krig_var_cython
+from cython_kriging import simple_krig_var2 as simple_krig_var_cython2
 
+from cython_kriging import simple_krig_var_one_at_a_time
 
 def simple_krig_var(*args, **kwargs):
     start_time = time.perf_counter()
-    ans = simple_krig_var_cython(*args, **kwargs)
-    
-    #print(f"Ran kriging in time: {time.perf_counter() - start_time}")
+    ans = simple_krig_var_cython2(*args, **kwargs)
+    # print(f"Ran kriging in time: {time.perf_counter() - start_time}")
     
     #print(args, kwargs)
     return ans
@@ -228,11 +229,11 @@ class SpatialFairSplit:
         rw_dict_model = self.dictionary_assigner(self.available_data, self.rw_set)
         
         # Kriging variance of real world data
-        print("Kriging variance of real world data")
-        print(rw_dict_model)
+        # print("Kriging variance of real world data")
+        # print(rw_dict_model)
         self.rw_krig_var = kriging_variance_rw(rw_dict_model)
-        print("END Kriging variance of real world data")
-        print("results", self.rw_krig_var)
+        # print("END Kriging variance of real world data")
+        # print("results", self.rw_krig_var)
 
         self._weights = np.ones_like(self.rw_krig_var) / len(self.rw_krig_var)
         plt.title("Distribution of rw_krig_var")
@@ -275,7 +276,7 @@ class SpatialFairSplit:
         :param dataset:
         :return:
         """
-        print("_kvar_one_at_a_time")
+        #  print("_kvar_one_at_a_time")
         
         # TODO: Speed up this computation
         # https://link.springer.com/content/pdf/10.1007/BF01033232.pdf
@@ -283,23 +284,24 @@ class SpatialFairSplit:
         # https://stats.stackexchange.com/questions/538452/analytical-leave-one-out-prediction-variance-for-kriging
         # https://jmlr.org/papers/volume17/14-540/14-540.pdf
         
-        
-        kvariance_set = np.zeros((len(dataset), 2))
-        for i, uwi in enumerate(dataset['UWI']):
-            test_well = dataset.query("UWI == @uwi")
-            train_wells = dataset.query("UWI != @uwi")
-            model_dictionary = self.dictionary_assigner(train_wells, test_well)
-            # kriging variance of testing
-            well_kvar = simple_krig_var(**model_dictionary)
-            # save the kriging variance
-            kvariance_set[i, 0] = well_kvar
-            # save the uwi
-            kvariance_set[i, 1] = uwi
+        UWIs = dataset["UWI"]
+        kriging_variances = simple_krig_var_one_at_a_time(
+        ndata=len(UWIs),
+        anis=self.kmodel_dict.get('anis'),
+        cc=self.kmodel_dict.get('cc'),
+        aa=self.kmodel_dict.get('aa'),
+        nug=self.kmodel_dict.get('nug'),
+        x_train=dataset[self._xdir].to_numpy(),
+        y_train=dataset[self._ydir].to_numpy(),
+        rotmat1=self.kmodel_dict.get('rotmat1'),
+        rotmat2=self.kmodel_dict.get('rotmat2'),
+        rotmat3=self.kmodel_dict.get('rotmat3'),
+        rotmat4=self.kmodel_dict.get('rotmat4'),
+        maxcov=self.kmodel_dict.get('maxcov')
+        )
 
         # assign the kriging variance to the correct wells
-        kvariance_set = pd.DataFrame(kvariance_set, columns=['kvar', 'UWI'])
-
-        return kvariance_set
+        return pd.DataFrame({"kvar":kriging_variances, "UWI":UWIs})
 
     def _get_fair_test_samples(self, dataset, seed):
         """
@@ -309,13 +311,13 @@ class SpatialFairSplit:
         :return:
 
         """
-        print(f"INSIDE FUNCTION: _get_fair_test_samples")
+        #  print(f"INSIDE FUNCTION: _get_fair_test_samples")
         dataset2 = dataset.copy()
         trials = 0
         counter = 0
         fair_test_samples = []
         test_samples = int(len(dataset) * self.test_size)
-        print(f"Drawing {test_samples} test samples")
+        # print(f"Drawing {test_samples} test samples")
         np.random.seed(11150)
         
         while counter < test_samples or trials > (test_samples * 4):
@@ -326,13 +328,13 @@ class SpatialFairSplit:
             left_kvar = self.bins[random_bin_index]
             # the maximum value of kriging variance of the bin
             right_kvar = self.bins[random_bin_index + 1]
-            print(f"Looking for points with variance in range: [{left_kvar}, {right_kvar}]")
+            # print(f"Looking for points with variance in range: [{left_kvar}, {right_kvar}]")
             
             # the wells that are inside the kriging variance
             subset_wells_bin = dataset2.query("kvar >= @left_kvar & kvar < @right_kvar")
             
             
-            print(f"Points found: {len(subset_wells_bin)}")
+            # print(f"Points found: {len(subset_wells_bin)}")
             
             
             # if there are no subsets that fill the condition (e.g., extreme kvar), pass.
@@ -344,7 +346,7 @@ class SpatialFairSplit:
                 # the probability of ocurrence of the chosen bin
                 prob_at_bin = self.probability[random_bin_index]
                 # draw a random number U~(0, max probability)
-                print("Setting seed", seed , trials)
+                # print("Setting seed", seed , trials)
                 np.random.seed(seed + trials)
                 z = np.random.uniform(0, np.max(self.probability))
 

@@ -66,6 +66,78 @@ cdef inline double cova2(
 
     return cova2_
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def simple_krig_var_one_at_a_time(
+        int ndata,
+        double anis,
+        double cc,
+        double aa,
+        double nug,
+        numpy.ndarray[numpy.float64_t, ndim=1] x_train,
+        numpy.ndarray[numpy.float64_t, ndim=1] y_train,
+        double rotmat1,
+        double rotmat2,
+        double rotmat3,
+        double rotmat4,
+        double maxcov
+        ):
+    
+    cdef int iest, i, j
+    cdef double sill = nug + cc
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] C = numpy.empty([ndata, ndata])
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] C_inv
+    cdef numpy.ndarray[numpy.uint8_t, ndim=1, cast=True] e;
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.empty(ndata)
+    
+    # Create matrix of covariances
+    for i in range(ndata):
+        for j in range(i + 1):
+            
+            # Fill the lower diagonal entries
+            C[i, j] = cova2(
+                    x_train[i],
+                    y_train[i],
+                    x_train[j],
+                    y_train[j],
+                    cc,
+                    aa,
+                    anis,
+                    rotmat1,
+                    rotmat2,
+                    rotmat3,
+                    rotmat4,
+                    maxcov
+                )
+            
+            # Fill the upper diagonal too
+            if j < i:
+                C[j, i] = C[i, j]
+                
+    # Invert the matrix
+    C_inv = numpy.linalg.inv(C)
+    
+    for i in range(ndata):
+        
+        e = numpy.ones(ndata, dtype=bool)
+        e[i] = 0
+        
+        kriging_variance[i] = C[i, i] + ((C_inv[i, e]/ C_inv[i, i]) * C[i, e]).sum()
+        
+    return kriging_variance
+        
+
+
+    
+    
+    
+                
+                
+            
+    
+    
+
 
 
 @cython.boundscheck(False)
@@ -117,7 +189,7 @@ def simple_krig_var(
     cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.full(nest, sill)
 
 
-    # Create the matrix a 
+    # Create the covariance matrix
     for idata in range(ndata):
         for jdata in range(ndata):
             a[idata, jdata] = cova2(
@@ -165,3 +237,151 @@ def simple_krig_var(
         for idata in range(0, ndata):
             kriging_variance[iest] = kriging_variance[iest] - s[idata] * rr[idata]
     return kriging_variance
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def simple_krig_var2(
+        int ndata,
+        int nest,
+        double anis,
+        double cc,
+        double aa,
+        double nug,
+        numpy.ndarray[numpy.float64_t, ndim=1] x_train,
+        numpy.ndarray[numpy.float64_t, ndim=1] y_train,
+        numpy.ndarray[numpy.float64_t, ndim=1] x_test,
+        numpy.ndarray[numpy.float64_t, ndim=1] y_test,
+        double rotmat1,
+        double rotmat2,
+        double rotmat3,
+        double rotmat4,
+        double maxcov
+        ):
+    """
+    Compute the kriging variance only at the testing locations.
+    :param ndata:
+    :param nest:
+    :param anis:
+    :param cc:
+    :param aa:
+    :param nug:
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :param rotmat1:
+    :param rotmat2:
+    :param rotmat3:
+    :param rotmat4:
+    :param maxcov:
+    :return:
+    """
+
+    cdef int iest, i, j
+    cdef double sill = nug + cc
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] C = numpy.empty([ndata, ndata])
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] r = numpy.zeros(ndata)
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] s = numpy.zeros(ndata)
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.full(nest, sill)
+    
+    # Create matrix of covariances
+    for i in range(ndata):
+        for j in range(i + 1):
+            
+            # Fill the lower diagonal entries
+            C[i, j] = cova2(
+                    x_train[i],
+                    y_train[i],
+                    x_train[j],
+                    y_train[j],
+                    cc,
+                    aa,
+                    anis,
+                    rotmat1,
+                    rotmat2,
+                    rotmat3,
+                    rotmat4,
+                    maxcov
+                )
+            
+            # Fill the upper diagonal too
+            if j < i:
+                C[j, i] = C[i, j]
+                
+
+    # Factor the matrix
+    cholesky_factor, low = scipy.linalg.cho_factor(C)
+
+    # Make and solve the kriging matrix, calculate the kriging estimate and variance
+    for iest in range(nest):
+        for i in range(ndata):
+
+            r[i] = cova2(
+                x_train[i],
+                y_train[i],
+                x_test[iest],
+                y_test[iest],
+                cc,
+                aa,
+                anis,
+                rotmat1,
+                rotmat2,
+                rotmat3,
+                rotmat4,
+                maxcov
+            )
+
+        # from scipy.linalg import cho_factor, cho_solve
+        s = scipy.linalg.cho_solve((cholesky_factor, low), r)
+        
+        kriging_variance[iest] = kriging_variance[iest] - (s * r).sum()
+        
+    return kriging_variance
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def solve_SK_equations(
+        numpy.ndarray[numpy.float64_t, ndim=2] C,
+        numpy.ndarray[numpy.float64_t, ndim=2] rhs,
+        double sill
+        ):
+    """
+    Compute the kriging variance only at the testing locations.
+    :param ndata:
+    :param nest:
+    :param anis:
+    :param cc:
+    :param aa:
+    :param nug:
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :param rotmat1:
+    :param rotmat2:
+    :param rotmat3:
+    :param rotmat4:
+    :param maxcov:
+    :return:
+    """
+    
+    cdef int n_data = C.shape[0]
+    cdef int k_data = rhs.shape[1]
+    assert C.shape[0] == C.shape[1]
+    
+    
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] kriging_variance = numpy.empty(k_data, sill)
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] weights = numpy.empty(n_data)
+    
+    # Factor C = 
+    cholesky_factor, low = scipy.linalg.cho_factor(C)
+    
+    for k in range(k_data):
+        rhs_vector = rhs[:, k]
+        weights = scipy.linalg.cho_solve((cholesky_factor, low), rhs_vector)
+        
+        kriging_variance[k] = kriging_variance[k] - (weights * rhs_vector).sum()
