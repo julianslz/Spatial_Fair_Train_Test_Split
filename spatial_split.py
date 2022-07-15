@@ -9,9 +9,10 @@ import numpy as np
 
 # from cython_kriging import covariance
 import cython_kriging
+from sklearn.utils.validation import check_random_state
 
 
-def sample_to_match(indices, function, target_data, num_samples):
+def sample_to_match(indices, function, target_data, num_samples, random_state=None):
     """Sample `num_samples` from a dataset given by `function(indices)` without
     replacement, so that the samples match the distribution of `target_data`.
 
@@ -52,6 +53,8 @@ def sample_to_match(indices, function, target_data, num_samples):
 
     """
 
+    rng = check_random_state(random_state)
+
     # Bin the target data to create a target distribution
     hist, edges = np.histogram(target_data, bins="fd")
 
@@ -85,7 +88,7 @@ def sample_to_match(indices, function, target_data, num_samples):
         # We could prefer sampling more in the direction of the real-world
         # dataset on the real line, but it's hard to say how much
         if np.sum(probability) == 0:
-            probability = np.ones(len(hist) + 2)
+            probability = np.ones(len(probability))
 
         assert np.sum(probability) > 0
 
@@ -93,7 +96,7 @@ def sample_to_match(indices, function, target_data, num_samples):
         probability = probability / np.sum(probability)
 
         # Draw a weighted sample, update the remaining indices and
-        index = np.random.choice(remaining_indices, p=probability, size=1)[0]
+        index = rng.choice(remaining_indices, p=probability, size=1)[0]
         remaining_indices = remaining_indices[remaining_indices != index]
 
         # Verify loop invariant
@@ -102,12 +105,8 @@ def sample_to_match(indices, function, target_data, num_samples):
 
 
 class SpatialSplit:
-
-    verbose = True
-
     def __init__(self, x_dataset, y_dataset, x_realworld, y_realworld):
         """
-
 
         Parameters
         ----------
@@ -126,6 +125,19 @@ class SpatialSplit:
         -------
         None.
 
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> x_dataset = np.array([180., 780., 180., 330., 100.])
+        >>> y_dataset = np.array([789., 429., 709., 229., 500.])
+        >>> x_rw = np.array([460., 500., 540., 500., 680.])
+        >>> y_rw =  np.array([469., 300., 129., 719.,  29.])
+        >>> splitter = SpatialSplit(x_dataset, y_dataset, x_rw, y_rw)
+        >>> indices = splitter.draw_test_indices(2, random_state=42)
+        >>> indices
+        [4, 3]
+
         """
         self.x_dataset = np.array(x_dataset)
         self.y_dataset = np.array(y_dataset)
@@ -142,19 +154,61 @@ class SpatialSplit:
         )
         assert len(self.rw_variances) == len(self.x_realworld)
 
-        # Step 2: Bin the real world variances
-        # self.rw_variance_hist, self.rw_variance_bin_edges = np.histogram(self.rw_variances, bins="fd")
+    def variance_dataset_loo(self):
+        """Get the leave-one-out simple kriging dataset variance.
 
-        # if self.verbose:
-        #    print(f"Binned {len(self.rw_variances)} real world variances into {len(self.rw_variance_hist)} bins.")
+        Index i contains the simple kriging variance at data point i,
+        based on a model trained on all other data points.
 
-    def draw_test_train_split(self, train_size=0.25, random_state=None):
+
+        Returns
+        -------
+        array
+            Array of variances, one for each point in the dataset.
+
+        """
+        return cython_kriging.get_variances_loo(self.x_dataset, self.y_dataset)
+
+    def variance_realworld(self):
+        """Get the simple kriging realworld variance.
+
+        Index i contains the simple kriging variance at real world data point i,
+        based on a model trained on all dataset data (but no real world data).
+
+
+        Returns
+        -------
+        array
+            Array of variances, one for each point in the dataset.
+
+        """
+        return self.rw_variances
+
+    def draw_test_indices(self, test_size=0.25, random_state=None):
+        """Draw indices in the dataset to be used for testing.
+
+        Parameters
+        ----------
+        test_size : number, optional
+           If float, should be between 0.0 and 1.0 and represent the proportion
+           of the dataset to include in the test split. If int, represents the
+           absolute number of test samples.
+        random_state : int, RandomState instance or None, default=None
+           Controls the random state of the sampling.
+           Pass an int for reproducible output across multiple function calls.
+
+        Returns
+        -------
+        list
+            List of indices that are selected as test data.
+
+        """
 
         # If the train size is a fraction, scale it
-        if 0 < train_size < 1:
-            n_samples = int(len(self.x_dataset) * train_size)
+        if 0 < test_size < 1:
+            n_samples = int(len(self.x_dataset) * test_size)
         else:
-            n_samples = train_size
+            n_samples = test_size
 
         indices = np.arange(len(self.x_dataset))
 
@@ -164,6 +218,12 @@ class SpatialSplit:
             )
 
         chosen_indices = list(
-            sample_to_match(indices, eval_kriging_var, self.rw_variances, n_samples)
+            sample_to_match(
+                indices,
+                eval_kriging_var,
+                self.rw_variances,
+                n_samples,
+                random_state=random_state,
+            )
         )
-        return chosen_indices, eval_kriging_var(indices)
+        return chosen_indices

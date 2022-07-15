@@ -34,30 +34,27 @@ real_world = real_world.rename(columns={'index': 'UWI'})
 # %%
 from spatial_split import sample_to_match
 
-target_data = (np.random.beta(3, 2, 10000)).tolist()
-samples_data = (np.random.beta(1.2, 1.3, 10000))
+target_data = (np.random.beta(3, 2, 1000)).tolist()
+samples_data = (np.random.beta(1.2, 1.3, 1000))
 
 
 indices = np.arange(len(samples_data))
 def function(indices):
     return samples_data[indices]
 
-num_samples = 1000
+num_samples = 500
 
 chosen_indices = list(sample_to_match(indices, function, target_data, num_samples))
 
 chosen_data = [samples_data[i] for i in chosen_indices]
 
 
-plt.hist(target_data, bins="fd", label="Target", alpha=0.33, density=True)
-plt.hist(samples_data, bins="fd", label="Samples", alpha=0.33, density=True)
-plt.hist(chosen_data, bins="fd", label="Chosen", alpha=0.33, density=True)
+plt.hist(target_data, bins="fd", label="Target", alpha=0.33, density=False)
+plt.hist(samples_data, bins="fd", label="Samples", alpha=0.33, density=False)
+plt.hist(chosen_data, bins="fd", label="Chosen", alpha=0.33, density=False)
 
 plt.legend()
 plt.show()
-
-
-
 
 print(np.mean(target_data), np.mean(chosen_data))
 
@@ -71,25 +68,38 @@ print(np.mean(target_data), np.mean(chosen_data))
 from spatial_split import SpatialSplit
 
 # %%
+
+# %%
+
+# %%
 # %%time
 
 splitter = SpatialSplit(
     x_dataset=training["X"].to_numpy(),
     y_dataset=training["Y"].to_numpy(),
-    x_realworld=training["X"].to_numpy(),
-    y_realworld=training["X"].to_numpy(),
+    x_realworld=real_world["X"].to_numpy(),
+    y_realworld=real_world["Y"].to_numpy(),
 
 )
 
 
-inds, loo = splitter.draw_test_train_split(train_size=0.25)
-loo_chosen = [loo[i] for i in inds]
+inds = splitter.draw_test_indices(test_size=0.25)
 
-plt.hist(loo, alpha=0.5, density=True, label="Dataset");
+dataset_var = splitter.variance_dataset_loo()
+realworld_var = splitter.variance_realworld()
+
+
+loo_chosen = [dataset_var[i] for i in inds]
+
+plt.hist(dataset_var, alpha=0.5, density=True, label="Dataset");
 plt.hist(loo_chosen, alpha=0.5, density=True, label="Test set");
-plt.hist(splitter.rw_variances, alpha=0.5, density=True, label="Real world set");
+plt.hist(realworld_var, alpha=0.5, density=True, label="Real world set");
 
 plt.legend()
+
+#print(dataset_var)
+#print(realworld_var)
+#print(loo_chosen)
 
 # %%
 
