@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jul 15 11:44:15 2022
+An implementation of the algorithm described in the paper
+   "Fair train-test split in machine learning: 
+    Mitigating spatial autocorrelation for improved prediction accuracy"
 
-@author: TODL
 """
 
 import numpy as np
-
-# from cython_kriging import covariance
-import cython_kriging
 from sklearn.utils.validation import check_random_state
+from scipy.linalg import cho_factor, cho_solve, inv
 
 
 def sample_to_match(indices, function, target_data, num_samples, random_state=None):
@@ -36,8 +35,9 @@ def sample_to_match(indices, function, target_data, num_samples, random_state=No
 
     Yields
     -------
-    index : integer
-        Index of a chosen data point in the data set.
+    (index, function(indicies)[index]): tuple
+        Index of a chosen data point in the data set, as well as dataset value
+        at that interation.
 
     Examples
     --------
@@ -47,10 +47,8 @@ def sample_to_match(indices, function, target_data, num_samples, random_state=No
     >>> indices = np.arange(len(samples_data))
     >>> def function(indices):
     ...     return samples_data[indices]
-    >>> chosen_indices = list(sample_to_match(indices, function, target_data, 250))
+    >>> chosen_indices = list(i for (i, _) in sample_to_match(indices, function, target_data, 250))
     >>> chosen_data = [samples_data[i] for i in chosen_indices]
-
-
     """
 
     rng = check_random_state(random_state)
@@ -97,62 +95,149 @@ def sample_to_match(indices, function, target_data, num_samples, random_state=No
 
         # Draw a weighted sample, update the remaining indices and
         index = rng.choice(remaining_indices, p=probability, size=1)[0]
-        remaining_indices = remaining_indices[remaining_indices != index]
 
         # Verify loop invariant
-        assert sample + 1 + len(remaining_indices) == initital_dataset_size
-        yield index
+        assert sample + len(remaining_indices) == initital_dataset_size
+
+        # If the indices are e.g. [4, 6, 8, 11], and index 8 was chosen,
+        # then we want to return the variance of dataset[2], since 8 is at
+        # index 2 in `remaining_indices`
+        dataset_idx = np.where(remaining_indices == index)
+        yield index, dataset[dataset_idx]
+
+        remaining_indices = remaining_indices[remaining_indices != index]
+
+
+def simple_kriging_variances(C, rhs):
+    """Given matrix of covariances C with shape (n, n), and a matrix of right
+    hand side (rhs) vectors of shape (n, k), solve the simple kriging system
+    of equations for each k.
+
+
+    Parameters
+    ----------
+    C : np.ndarray
+        A symmetric, positive definite covariance matrix of shape (n, n).
+    rhs : np.ndarray
+        A matrix of right hand sides of shape (n, k).
+
+    Returns
+    -------
+    variances : np.ndarray
+        The k'th entry is the kriging variance for point rhs[:, k].
+
+    """
+    assert C.shape[0] == C.shape[1] == rhs.shape[0]
+
+    # The number of test points
+    num_test_points = rhs.shape[1]
+
+    # Factor the symmetric positive definite covariance matrix
+    # Note that while the simple kriging matrix is positive symmetric definite
+    # and may be solved by Cholesky, the same is not true for the ordinary
+    # kriging matrix. If we want to solve that sytem, we should use LU instead
+    L, low = cho_factor(C)
+
+    # Create a matrix of kriging variances
+    # The kriging variance at point k is var(estimate_k - true_value_k)
+    # and reflects the uncertainty of the value at the point.
+    # See Chapter 3 in "Multivateiate Geostatistics" by Hans Wackernagel
+    variances = np.empty(num_test_points)
+    for k in range(num_test_points):
+
+        # Solve for optimal weights that minimize estimation variance
+        weights = cho_solve((L, low), rhs[:, k])
+        # Compute the variance under optimal weights
+        # Here we assume C(x_0, x_0) = C(x_k, x_k) for all k
+        variances[k] = C[0, 0] - np.sum(weights * rhs[:, k])
+
+    return variances
+
+
+def _simple_kriging_variances_loo_naive(C):
+    """DO NOT USE. Naive computation of LOO variance. Used for tests."""
+
+    num_datapoints = C.shape[0]
+
+    variances = np.empty(num_datapoints)
+    for i in range(num_datapoints):
+
+        # The i'th column in the right hand side
+        rhs = C[:, i]
+
+        # Delete i'th row and column
+        C_minus_i = np.delete(C, i, axis=0)
+        C_minus_i = np.delete(C_minus_i, i, axis=1)
+        rhs = np.delete(rhs, i, axis=0)
+
+        # Solve for weights that minimize variance, then for the variance
+        weights = np.linalg.solve(C_minus_i, rhs)
+        variances[i] = C[i, i] - np.sum(weights * rhs)
+
+    return variances
+
+
+def simple_kriging_variances_loo(C):
+    """Compute leave-one-out variance at each data point.
+
+    This is equation (8) in the 1983 paper by Olivier Dubrule titled
+    "Cross Validation of Kriging in a Unique Neighborhood".
+
+
+    Parameters
+    ----------
+    C : np.ndarray
+        A symmetric, positive definite covariance matrix of shape (n, n).
+
+    Returns
+    -------
+    variances : np.ndarray
+        The i'th entry is the kriging variance for point i.
+
+    """
+    return 1 / np.diag(inv(C, check_finite=False))
 
 
 class SpatialSplit:
-    def __init__(self, x_dataset, y_dataset, x_realworld, y_realworld):
-        """
+    def __init__(self, covmat_dataset, covmat_realworld):
+        """Spatial data set splitter. Attempts to create test data sets with
+        the same kriging variance as the planned real-world usage.
+
 
         Parameters
         ----------
-        x_dataset : TYPE
-            DESCRIPTION.
-        y_dataset : TYPE
-            DESCRIPTION.
-        x_realworld : TYPE
-            DESCRIPTION.
-        y_realworld : TYPE
-            DESCRIPTION.
-        covariance_function : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
+        covmat_dataset : np.ndarray
+            A symmetric, positive definite covariance matrix. Entry (i, j) is
+            given by C_ij = cov(x_i, x_j) and there are n data points, so the
+            matrix has shape (n, n).
+        covmat_realworld : np.ndarray
+            A matrix of covariances between the observed dataset (n points) and
+            the planned real world usage dataset (k points). Must have shape
+            (n, k).
 
         Examples
         --------
         >>> import numpy as np
-        >>> x_dataset = np.array([180., 780., 180., 330., 100.])
-        >>> y_dataset = np.array([789., 429., 709., 229., 500.])
-        >>> x_rw = np.array([460., 500., 540., 500., 680.])
-        >>> y_rw =  np.array([469., 300., 129., 719.,  29.])
-        >>> splitter = SpatialSplit(x_dataset, y_dataset, x_rw, y_rw)
-        >>> indices = splitter.draw_test_indices(2, random_state=42)
-        >>> indices
-        [4, 3]
-
+        >>> from scipy.spatial.distance import cdist
+        >>> np.random.seed(42)
+        >>> training_vectors = np.random.randn(100, 2)
+        >>> real_world_vectors = np.random.randn(50, 2)
+        >>> cov_matrix = np.exp(-cdist(training_vectors, training_vectors))
+        >>> cov_realworld_matrix = np.exp(-cdist(training_vectors, real_world_vectors))
+        >>> splitter = SpatialSplit(cov_matrix, cov_realworld_matrix)
+        >>> splitter.draw_test_indices(test_size=10, random_state=42)
+        array([34, 96, 71, 56, 14, 16,  4, 87, 57, 68])
         """
-        self.x_dataset = np.array(x_dataset)
-        self.y_dataset = np.array(y_dataset)
-        assert len(self.x_dataset) == len(self.y_dataset)
+        self.covmat_dataset = covmat_dataset
+        self.covmat_realworld = covmat_realworld
 
-        self.x_realworld = np.array(x_realworld)
-        self.y_realworld = np.array(y_realworld)
-        assert len(self.x_realworld) == len(self.y_realworld)
+        assert self.covmat_dataset.shape[0] == self.covmat_dataset.shape[0]
+        assert self.covmat_dataset.shape[1] == self.covmat_realworld.shape[0]
 
-        # Step 1: Compute simple kriging variance for the planned real world use
+        # Compute simple kriging variance for the planned real world use
         # of the model, conditioned on the data points in the data set
-        self.rw_variances = cython_kriging.get_test_set_variances(
-            x_dataset, y_dataset, x_realworld, y_realworld
-        )
-        assert len(self.rw_variances) == len(self.x_realworld)
+        self.rw_variances = simple_kriging_variances(covmat_dataset, covmat_realworld)
+        assert len(self.rw_variances) == self.covmat_realworld.shape[1]
 
     def variance_dataset_loo(self):
         """Get the leave-one-out simple kriging dataset variance.
@@ -167,7 +252,7 @@ class SpatialSplit:
             Array of variances, one for each point in the dataset.
 
         """
-        return cython_kriging.get_variances_loo(self.x_dataset, self.y_dataset)
+        return simple_kriging_variances_loo(self.covmat_dataset)
 
     def variance_realworld(self):
         """Get the simple kriging realworld variance.
@@ -184,7 +269,9 @@ class SpatialSplit:
         """
         return self.rw_variances
 
-    def draw_test_indices(self, test_size=0.25, random_state=None):
+    def draw_test_indices(
+        self, test_size=0.25, random_state=None, return_variance=False
+    ):
         """Draw indices in the dataset to be used for testing.
 
         Parameters
@@ -196,6 +283,10 @@ class SpatialSplit:
         random_state : int, RandomState instance or None, default=None
            Controls the random state of the sampling.
            Pass an int for reproducible output across multiple function calls.
+         return_variance : bool
+           If True, will return a tuple of arrays (indices, variances), where
+           variances[i] is the variance of data point i evaluated on the
+           iteration it was included in the test set.
 
         Returns
         -------
@@ -203,21 +294,23 @@ class SpatialSplit:
             List of indices that are selected as test data.
 
         """
+        num_datapoints = self.covmat_dataset.shape[0]
 
         # If the train size is a fraction, scale it
         if 0 < test_size < 1:
-            n_samples = int(len(self.x_dataset) * test_size)
+            n_samples = int(num_datapoints * test_size)
         else:
             n_samples = test_size
 
-        indices = np.arange(len(self.x_dataset))
+        indices = np.arange(num_datapoints)
 
         def eval_kriging_var(indices):
-            return cython_kriging.get_variances_loo(
-                self.x_dataset[indices], self.y_dataset[indices]
-            )
+            # Around 98% of the time in the entire algorithm is spent
+            # inverting matrices inside 'simple_kriging_variances_loo'
+            covariance_mat = self.covmat_dataset[indices, :][:, indices]
+            return simple_kriging_variances_loo(covariance_mat)
 
-        chosen_indices = list(
+        samples = list(
             sample_to_match(
                 indices,
                 eval_kriging_var,
@@ -226,4 +319,63 @@ class SpatialSplit:
                 random_state=random_state,
             )
         )
-        return chosen_indices
+
+        # The indices chosen by sampling, and the variances at each iteration
+        inds = [index for (index, var) in samples]
+        variances = [var for (index, var) in samples]
+
+        if return_variance:
+            return np.array(inds, dtype=int), np.array(variances)
+        return np.array(inds, dtype=int)
+
+
+# =============================================================================
+# ============================== TESTS ========================================
+# =============================================================================
+import pytest
+
+@pytest.mark.parametrize(
+    "seed",
+   list(range(100))
+)
+def test_leave_one_out(seed):
+    """Test fast leave one out cross validation."""
+
+    np.random.seed(seed)
+    n = np.random.randint(3, 10)
+    # Create PSD matrix
+    F = np.random.randn(n, n)
+    C = F.T @ F
+    variances_fast = simple_kriging_variances_loo(C)
+    variances_naive = _simple_kriging_variances_loo_naive(C)
+    assert np.allclose(variances_fast, variances_naive)
+
+@pytest.mark.parametrize(
+    "seed",
+   list(range(100))
+)
+def test_indices_in_range(seed):
+
+    import numpy as np
+    from scipy.spatial.distance import cdist
+
+    np.random.seed(seed)
+
+    train_size = np.random.randint(10, 100)
+    test_size = np.random.randint(1, 10)
+
+    training_vectors = np.random.randn(train_size, 2)
+    real_world_vectors = np.random.randn(50, 2)
+    cov_matrix = np.exp(-cdist(training_vectors, training_vectors))
+    cov_realworld_matrix = np.exp(-cdist(training_vectors, real_world_vectors))
+    splitter = SpatialSplit(cov_matrix, cov_realworld_matrix)
+    indices = splitter.draw_test_indices(test_size=test_size)
+    assert all( 0 <= i < train_size for i in indices)
+    assert len(indices) == test_size
+        
+        
+if __name__ == "__main__":
+
+
+    # --durations=10  <- May be used to show potentially slow tests
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
