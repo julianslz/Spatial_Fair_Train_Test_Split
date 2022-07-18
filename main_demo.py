@@ -11,12 +11,9 @@
 import os
 import numpy as np
 import pandas as pd
-from geostatspy.GSLIB import make_variogram
-from geostatspy.geostats import kb2d
 import matplotlib.pyplot as plt
 from KDEpy import FFTKDE
 
-import utils_demo as sfs
 
 # %%
 SET = 1  # 1 or 2

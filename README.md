@@ -1,6 +1,6 @@
 # Spatial fair train-test split
 
-This repository contains an implemention of the algorithm sketched in the paper [Fair train-test split in machine learning: Mitigating spatial autocorrelation for improved prediction accuracy](https://www.sciencedirect.com/science/article/pii/S0920410521015023).
+This repository contains a (Python 3.8) implemention of the algorithm sketched in the paper [Fair train-test split in machine learning: Mitigating spatial autocorrelation for improved prediction accuracy](https://www.sciencedirect.com/science/article/pii/S0920410521015023).
 A reference implementation is found in the GitHub repo [julianslz/Spatial_Fair_Train_Test_Split](https://github.com/julianslz/Spatial_Fair_Train_Test_Split/tree/b457b9953212f707cd6ac712d79ab91444d61276).
 
 ## Comments
