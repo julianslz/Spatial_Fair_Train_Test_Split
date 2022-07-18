@@ -1,18 +1,26 @@
+# %%
+# %load_ext autoreload
+
+# %%
+# %autoreload 2
+
+# %%
+# %load_ext line_profiler
+
+# %%
 import os
 import numpy as np
 import pandas as pd
-from geostatspy.GSLIB import make_variogram
-from geostatspy.geostats import kb2d
+import matplotlib.pyplot as plt
+from KDEpy import FFTKDE
 
-import utils_demo as sfs
 
-# %% Input the data
+# %%
 SET = 1  # 1 or 2
-N_REALIZATIONS = 5  # number of training and test sets.
 XDIR = 'X'  # the name of the column that contains the X direction
 YDIR = 'Y'  # the name of the column that contains the Y direction
 
-# %% read the data
+# %%
 path = os.path.join(os.getcwd(), "Files", "Datasets", "demo" + str(SET) + "_train.csv")
 training = pd.read_csv(path, dtype={'X': float, 'Y': float})
 training.reset_index(inplace=True)  # use the well index as uwi
@@ -23,99 +31,181 @@ real_world = pd.read_csv(path, dtype={'X': float, 'Y': float})
 real_world.reset_index(inplace=True)  # use the well index as uwi
 real_world = real_world.rename(columns={'index': 'UWI'})
 
-# %% Geostatistical setup and definitions. Variogram model using GSLIB convention
-vario = make_variogram(
-    nug=0.0, nst=1,
-    it1=1, cc1=1.0, azi1=0, hmaj1=250, hmin1=157,
-    it2=3, cc2=0.0, azi2=0, hmaj2=250, hmin2=157
-)
+# %%
+training.shape, real_world.shape
 
-# Compute the rotational matrices for kriging
-rotmat1, rotmat2, rotmat3, rotmat4, maxcov = sfs.setup_rotmat(vario['nug'], vario['cc1'], vario['azi1'])
-
-# Define the modeling dictionary
-dictionary_model = {
-    "anis": vario.get('hmin1') / vario.get('hmaj1'),
-    "cc": vario.get("cc1"),
-    "aa": vario.get("hmaj1"),
-    "nug": vario.get("nug"),
-    "rotmat1": rotmat1,
-    "rotmat2": rotmat2,
-    "rotmat3": rotmat3,
-    "rotmat4": rotmat4,
-    "maxcov": maxcov
-}
+# %% [markdown]
+# ## Create covariance matrices
 
 # %%
-# instantiate the object. The larger your test_size, the more time to compute the fair train sets
-fair_cv = sfs.SpatialFairSplit(training, real_world, dictionary_model, xdir=XDIR, ydir=YDIR, test_size=0.05)
+from scipy.spatial.distance import cdist
 
-# obtain the realizations of training and test sets from spatial fair split (sfs). Get the kriging variance
-# distribution too
-sfs_train, sfs_test, sfs_kvar = fair_cv.fair_sets_realizations(N_REALIZATIONS)
+training_vectors = training[["X", "Y"]].to_numpy()
+real_world_vectors = real_world[["X", "Y"]].to_numpy()
 
-# sfs_train are the training sets
-# sfs_test are the test sets
-# sfs_vkar is the kriging variance of sfs_test using sfs_train
+dist_training = cdist(training_vectors, training_vectors, metric='euclidean')
+dist_train_rw = cdist(training_vectors, real_world_vectors, metric='euclidean')
 
-# %%
-# For comparison purposes, compute other sets with different cross-validation methods: the validation set approach (vsa)
-# and spatial cross-validation. Moreover, get the kriging variance distribution of each
-vsa_train, vsa_test, vsa_kvar, spatial_cv, spatial_cv_kvar = fair_cv.create_other_sets(N_REALIZATIONS)
+def covariance_function(distance):    
+    return np.exp(-(distance/400))
 
-# %% Estimate the kriging variance
-_, vmap = kb2d(
-    df=training,
-    xcol='X',
-    ycol='Y',
-    vcol='Perm',
-    tmin=0,
-    tmax=999,
-    nx=100,
-    xmn=5,
-    xsiz=10,
-    ny=100,
-    ymn=5,
-    ysiz=10,
-    nxdis=1,
-    nydis=1,
-    ndmin=0,
-    ndmax=10,
-    radius=100,
-    ktype=0,
-    skmean=training['Perm'].mean(),
-    vario=vario
-)
-
-cell_size = 10
-xrange = list(np.linspace(0, 1000, int(np.ceil((1000 - 0) / cell_size))))
-yrange = list(np.linspace(0, 1000, int(np.ceil((1000 - 0) / cell_size))))
-
-# Plot the 2D dataset and the kriging variance: Figures 2 and 6
-figure = sfs.spatial_config_and_kvar(training, real_world, vmap, xrange, yrange)
-
-# %% Plot the spatial configuration of the three cross-validations methods: Figures 3 and 7
-sfs.plot_3_realizations(
-    fair_train=sfs_train,
-    fair_test=sfs_test,
-    rand_train=vsa_train,
-    rand_test=vsa_test,
-    spatial_cv=spatial_cv,
-    real_world_set=real_world,
-    realiz=0
-)
+cov_matrix = covariance_function(dist_training)
+cov_realworld_matrix = covariance_function(dist_train_rw)
 
 # %%
-# Instantiate the object to obtain the KDE and violin plots
-images = sfs.PublicationImages(
-    test_kvar_random=vsa_kvar,
-    test_kvar_fair=sfs_kvar,
-    test_kvar_spatial=spatial_cv_kvar,
-    rw_kvar=fair_cv.rw_krig_var
-)
+pd.Series(cov_matrix.ravel()).describe()
 
-# Plot the kernel density estimates of the three cross-validations methods: Figures 4 and 8
-plot = images.kde_plots(5.0)
+# %% [markdown]
+# ## Create a train test split
 
-# Plot the violin plots of the divergence metrics: Figures 5 and 9
-plot2 = images.divergence_violins()
+# %%
+from spatial_split import SpatialSplit, sample_to_match, simple_kriging_variances_loo
+
+splitter = SpatialSplit(cov_matrix, cov_realworld_matrix)
+splitter.draw_test_indices(test_size=0.1)
+
+# %% [markdown]
+# ## Test the speed
+
+# %%
+cov_matrix.shape, cov_realworld_matrix.shape
+
+# %%
+# %timeit splitter.draw_test_indices(test_size=0.05)
+
+# %% [markdown]
+# ## Create a plot
+
+# %%
+# %%time
+
+from spatial_split import simple_kriging_variances
+
+plt.title("Draws of joint variance over test set, conditioned on training set")
+
+vars_realworld = simple_kriging_variances(cov_matrix, cov_realworld_matrix)
+
+bw = "silverman"
+x, y = FFTKDE(bw=bw).fit(vars_realworld).evaluate()
+plt.plot(x, y, zorder=99, lw=5, label="RW variance, conditioned on train + test set")
+
+splitter = SpatialSplit(cov_matrix, cov_realworld_matrix)
+samples = len(training)
+rw_samples = len(real_world)
+
+for test in range(50):
+    print(test, end=" ")
+    
+    test_indices = splitter.draw_test_indices(test_size=rw_samples)
+    train_indices = list(sorted(set(range(samples)) - set(test_indices)))
+    
+    test_indices = np.array(test_indices, dtype=int)
+    train_indices = np.array(train_indices, dtype=int)
+    
+    test_cov = cov_matrix[train_indices, :][:, test_indices]
+    train_cov = cov_matrix[train_indices, :][:, train_indices]
+    
+    # Variances of test point, conditioned on training points
+    vars_test = simple_kriging_variances(train_cov, test_cov)
+
+    x, y = FFTKDE(bw=bw).fit(vars_test).evaluate()
+    plt.plot(x, y, color="k", alpha=0.1, zorder=9)
+
+
+plt.grid(True, zorder=0)
+plt.legend();
+
+# %%
+# %%time
+
+from spatial_split import simple_kriging_variances
+
+plt.title("Draws of test set variances, conditioned on remaining training data in each loop")
+
+vars_realworld = simple_kriging_variances(cov_matrix, cov_realworld_matrix)
+
+x, y = FFTKDE(bw=bw).fit(vars_realworld).evaluate()
+plt.plot(x, y, zorder=99, lw=5, label="RW variance, conditioned on train + test set")
+
+splitter = SpatialSplit(cov_matrix, cov_realworld_matrix)
+samples = len(training)
+rw_samples = len(real_world)
+
+for test in range(50):
+    print(test, end=" ")
+    
+    # Variance of test points as the algorithms adds them
+    _, vars_test = splitter.draw_test_indices(test_size=rw_samples, return_variance=True)
+
+    x, y = FFTKDE(bw=bw).fit(vars_test).evaluate()
+    plt.plot(x, y, color="k", alpha=0.1, zorder=9)
+
+
+plt.grid(True, zorder=0)
+plt.legend();
+
+# %% [markdown]
+# ## Non spatial splitting
+
+# %%
+# %%time
+
+from spatial_split import simple_kriging_variances
+from sklearn.model_selection import train_test_split
+
+plt.title("Draws of joint variance over test set, conditioned on training set")
+
+vars_realworld = simple_kriging_variances(cov_matrix, cov_realworld_matrix)
+
+bw = "silverman"
+x, y = FFTKDE(bw=bw).fit(vars_realworld).evaluate()
+plt.plot(x, y, zorder=99, lw=5, label="RW variance, conditioned on train + test set")
+
+for test in range(50):
+    print(test, end=" ")
+    
+    train_indices, test_indices = train_test_split(np.arange(len(training)))
+    
+    test_indices = np.array(test_indices, dtype=int)
+    train_indices = np.array(train_indices, dtype=int)
+    
+    test_cov = cov_matrix[train_indices, :][:, test_indices]
+    train_cov = cov_matrix[train_indices, :][:, train_indices]
+    
+    # Variances of test point, conditioned on training points
+    vars_test = simple_kriging_variances(train_cov, test_cov)
+
+    x, y = FFTKDE(bw=bw).fit(vars_test).evaluate()
+    plt.plot(x, y, color="k", alpha=0.1, zorder=9)
+
+
+plt.grid(True, zorder=0)
+plt.legend();
+
+# %% [markdown]
+# ## Plot the sampling matching algorithm
+
+# %%
+from spatial_split import sample_to_match
+
+target_data = (np.random.beta(3, 2, 1000)).tolist()
+samples_data = (np.random.beta(1.2, 1.3, 1000))
+
+
+indices = np.arange(len(samples_data))
+def function(indices):
+    return samples_data[indices]
+
+num_samples = 500
+
+chosen_indices = list(sample_to_match(indices, function, target_data, num_samples))
+
+chosen_data = [samples_data[i] for (i, v) in chosen_indices]
+
+
+plt.hist(target_data, bins="fd", label="Target", alpha=0.33, density=False)
+plt.hist(samples_data, bins="fd", label="Samples", alpha=0.33, density=False)
+plt.hist(chosen_data, bins="fd", label="Chosen", alpha=0.33, density=False)
+
+plt.legend()
+plt.show()
